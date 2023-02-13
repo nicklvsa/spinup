@@ -1,0 +1,9 @@
+# CDK asset staging directory
+cdk.context.json
+.cdk.staging
+cdk.out
+cdk/bin/cdk.ts
+
+# package files
+package-lock.json
+node_modules/
