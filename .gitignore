@@ -7,3 +7,4 @@ cdk/bin/cdk.ts
 # package files
 package-lock.json
 node_modules/
+test-api/

@@ -1,19 +1,24 @@
 import {
     Stack,
     StackProps,
+    aws_s3 as s3,
     aws_ec2 as ec2,
+    aws_ecr as ecr,
     aws_iam as iam,
     aws_ecs as ecs,
+    aws_lambda as lambda,
+    aws_events as events,
     aws_route53 as route53,
     aws_cloudfront as cloudfront,
     aws_certificatemanager as acm,
     aws_route53_targets as targets,
     aws_ecs_patterns as ecsPatterns,
-    aws_cloudfront_origins as origins
+    aws_cloudfront_origins as origins,
+    aws_events_targets as eventTargets
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { APIStackConfig } from './types';
-import { applyAutoScalingPolicy, applyDefaultConfig, localOrRegistryImage } from './utils';
+import { APIStackConfig, LambdaRuntimeChoice, Nullable } from './types';
+import { applyAutoScalingPolicy, applyDefaultConfig, localOrRegistryImage, parseS3Path } from './utils';
 
 interface APIStackProps extends StackProps {
     config: APIStackConfig
@@ -25,6 +30,8 @@ export class APIStack extends Stack {
 
         const { config } = props;
         applyDefaultConfig(config);
+
+        const { api: apiConfig } = config.containerConfig;
 
         const vpc = config?.attachExistingResources?.vpcIdentifier
             ? ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: config?.attachExistingResources.vpcIdentifier })
@@ -50,8 +57,6 @@ export class APIStack extends Stack {
                 containerInsights: true,
                 enableFargateCapacityProviders: true,
             });
-            
-        const { api: apiConfig } = config.containerConfig;
 
         let apiContainerImage: ecs.ContainerImage;
         try {
@@ -136,6 +141,65 @@ export class APIStack extends Stack {
                 });
 
                 applyRecords(hostedZone);
+            }
+        }
+
+        if (config.cronJobs) {
+            for (const job of config.cronJobs) {
+                let setKeys = 0;
+                let sourceAsset: 
+                    Nullable<
+                        lambda.AssetCode | 
+                        lambda.AssetImageCode | 
+                        lambda.EcrImageCode | 
+                        lambda.InlineCode |
+                        lambda.S3Code
+                    > = null;
+
+                Object.keys(job.code).forEach(key => {
+                    if (job.code[key]) {
+                        const source = job.code[key];
+
+                        switch (key) {
+                            case 'fromLocal':
+                                sourceAsset = lambda.Code.fromAsset(source);
+                                break;
+                            case 'fromLocalImage':
+                                sourceAsset = lambda.Code.fromAssetImage(source);
+                                break;
+                            case 'fromBucket':
+                                const [bucketStr, keyStr] = parseS3Path(source);
+                                const bucket = s3.Bucket.fromBucketName(this, `bucket_${job.name}`, bucketStr);
+                                sourceAsset = lambda.Code.fromBucket(bucket, keyStr);
+                                break;
+                            case 'fromEcrImage':
+                                const repo = ecr.Repository.fromRepositoryName(this, `repo_${job.name}`, source);
+                                sourceAsset = lambda.Code.fromEcrImage(repo);
+                                break;
+                            case 'fromInline':
+                                sourceAsset = lambda.Code.fromInline(source);
+                                break;
+                        }
+
+                        setKeys++;
+                    }
+                });
+
+                if (setKeys !== 1 || !sourceAsset) {
+                    throw new Error('a cron job must contain a single code source');
+                }
+
+                const runner = new lambda.Function(this, `lambda_${job.name}`, {
+                    code: sourceAsset,
+                    handler: job.entrypoint,
+                    runtime: new lambda.Runtime(job.runtime),                  
+                });
+
+                const rule = new events.Rule(this, `schedule_${job.name}`, {
+                    schedule: events.Schedule.expression(job.schedule),
+                });
+
+                rule.addTarget(new eventTargets.LambdaFunction(runner));
             }
         }
     }

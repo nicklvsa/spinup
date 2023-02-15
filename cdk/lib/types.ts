@@ -1,4 +1,14 @@
+import {
+    aws_lambda as lambda,
+} from 'aws-cdk-lib';
+
+const lambdaRuntimeList = [...lambda.Runtime.ALL.map(runtime => {
+    return runtime.name;
+})] as const;
+
 export type Nullable<T> = T | null;
+
+export type LambdaRuntimeChoice = typeof lambdaRuntimeList[number];
 
 export interface ContainerImageConfig {
     local?: string;
@@ -40,6 +50,22 @@ interface APIScalingConfig {
     minCount: number;
 }
 
+export interface CronJobCode extends Record<string, any> {
+    fromLocal?: string;
+    fromLocalImage?: string;
+    fromBucket?: string;
+    fromEcrImage?: string;
+    fromInline?: string;
+}
+
+export interface CronJob {
+    name: string;
+    code: CronJobCode;
+    entrypoint: string;
+    schedule: string;
+    runtime: LambdaRuntimeChoice;
+}
+
 export interface Route53ZoneImport {
     zoneName: string;
     zoneID: string;
@@ -68,6 +94,7 @@ export interface APIStackConfig {
     capacityMixture?: SpotOnDemandMixture;
     attachExistingResources?: ExistingResourceSelection;
     cloudfrontConfig?: CloudfrontConfig;
+    cronJobs?: CronJob[];
     scaling: APIScalingConfig;
     containerConfig: { api: ContainerConfig };
     cpuReservation: number;

@@ -25,8 +25,14 @@ export const hasDocker = (): boolean => {
         execa.sync('docker', ['version']);
         return true;
     } catch (e) {
-        return false
+        console.log(e);
+        return false;
     }
+};
+
+export const parseS3Path = (path: string): [string, string] => {
+    const parts = path.replace("s3://", "").split("/");
+    return [parts.pop()!, parts.join("/")];
 };
 
 export const applyAutoScalingPolicy = (scaleBy: AutoScalingPolicyAdjustmentConfig[], applyTo: ecs.ScalableTaskCount, targetGroup: elbv2.ApplicationTargetGroup) => {

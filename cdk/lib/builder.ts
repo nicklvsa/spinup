@@ -5,7 +5,9 @@ import {
     ContainerConfig, 
     AutoScalingPolicyAdjustmentMetric, 
     AutoScalingPolicyAdjustmentConfig, 
-    CloudfrontConfig
+    CloudfrontConfig,
+    LambdaRuntimeChoice,
+    CronJob
 } from "./types";
 
 class APIBuilder {
@@ -25,6 +27,7 @@ class APIBuilder {
 
     private containers: { api: ContainerConfig };
     private scalingPolicies: AutoScalingPolicyAdjustmentConfig[] = [];
+    private cronFunctions: CronJob[] = [];
 
     private cloudfrontConfig: CloudfrontConfig;
 
@@ -69,7 +72,7 @@ class APIBuilder {
                 };
                 return this;
             }
-        }
+        } as const;
     }
 
     public taskScale(desiredCount: number, maxCount: number, minCount: number): APIBuilder {
@@ -112,6 +115,71 @@ class APIBuilder {
                 };
                 return this;
             }
+        } as const;
+    }
+
+    public addCronFunction(name: string, entrypoint: string, schedule: string, runtime: LambdaRuntimeChoice) {
+        return {
+            fromLocal: (code: string): APIBuilder => {
+                this.cronFunctions.push({
+                    name,
+                    entrypoint,
+                    schedule,
+                    runtime,
+                    code: {
+                        fromLocal: code,
+                    },
+                });
+                return this;
+            },
+            fromLocalImage: (image: string): APIBuilder => {
+                this.cronFunctions.push({
+                    name,
+                    entrypoint,
+                    schedule,
+                    runtime,
+                    code: {
+                        fromLocalImage: image,
+                    },
+                });
+                return this;
+            },
+            fromBucket: (s3Path: string): APIBuilder => {
+                this.cronFunctions.push({
+                    name,
+                    entrypoint,
+                    schedule,
+                    runtime,
+                    code: {
+                        fromBucket: s3Path,
+                    },
+                });
+                return this;
+            },
+            fromEcrImage: (image: string): APIBuilder => {
+                this.cronFunctions.push({
+                    name,
+                    entrypoint,
+                    schedule,
+                    runtime,
+                    code: {
+                        fromEcrImage: image,
+                    },
+                });
+                return this;
+            },
+            fromInlineCode: (code: string): APIBuilder => {
+                this.cronFunctions.push({
+                    name,
+                    entrypoint,
+                    schedule,
+                    runtime,
+                    code: {
+                        fromInline: code,
+                    },
+                });
+                return this;
+            },
         }
     }
 
